@@ -1,0 +1,27 @@
+{
+  "name": "dexalotTraderBot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "tyler hackett",
+  "license": "MIT",
+  "compilerOptions": {
+    "target": "ES2018",
+    "module": "commonjs",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "dependencies": {
+    "axios": "^1.7.5",
+    "binary-string": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "ethers": "6.13.2",
+    "node-fetch": "^3.3.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4",
+    "web3": "^4.12.1"
+  }
+}
