@@ -95,8 +95,52 @@ async function readLogFile() {
   return await fs.readFileSync('log.txt', 'utf8')
 }
 
+async function processMsgQue(msgQue: any, ws: any, msgData: any) {
+  while (msgQue.length > 0) {
+    const msg = msgQue.shift();
+    const interval = 200
+    timeStamp = Date.now()
+    const msgStr = JSON.parse(binaryToString.fromBuffer(msgData))
+    msgStr['timestamp'] = timeStamp
+    const avaxPrice = msgStr.data['baseinUsd']
+    // Adding a timestamp to the price data so it's easier to filter out duplicates. Dexalot sends the same data twice every 6 seconds.
+    const timeStampData = msgStr['timestamp']
+    const priceDataObject = {avaxPrice, timeStampData}
+    if (avaxPrice !== undefined) {
+      priceDataArray.push(priceDataObject)
+    }
+    const uniquePriceDataArray = priceDataArray.filter((obj, index) => priceDataArray.findIndex((item) => item.timeStampData === obj.timeStampData) === index)
+    if (priceDataArray.length > interval) {
+      const avaxBalance = Number(await getAvaxBalance())
+      const usdcBalance = Number(await getUsdcBalance())
+      const last10Minutes = uniquePriceDataArray.map((priceData: any) => priceData.avaxPrice).slice(-100)
+      const last20Minutes = uniquePriceDataArray.map((priceData: any) => priceData.avaxPrice).slice(-200)
+      const sma10 = averageLastN(last10Minutes, 100)
+      const sma20 = averageLastN(last20Minutes, 200)
+
+      console.log('sma10: ', sma10)
+      console.log('sma20: ', sma20)
+
+      console.log(timeStamp, 'time stamp')
+      // Buy AVAX if the 10 minute moving average is greater than the 20 minute moving average and the AVAX balance is less than 1
+      if (sma10 > sma20 && avaxBalance < (1*(10**18))) {
+        console.log('buying...')
+        sendOrder((usdcBalance - (1*10**6)).toString(), 'buy')
+        
+      // Sell AVAX if the 10 minute moving average is less than the 20 minute moving average and the USDC balance is less than 1
+      } else if (sma10 < sma20 && usdcBalance <= (2*(10**6))) {
+          await sendOrder((avaxBalance - (.01*(10**18))).toString(), 'sell') 
+          console.log('sold')
+    }
+    sleep(30000)
+  }
+  }
+  }
+
+
 let priceDataArray: any[] = [];
 const ws = new WebSocket('wss://api.dexalot.com')
+let timeStamp 
 
 ws.onopen = () => {
   const msg = {
@@ -110,60 +154,14 @@ ws.onopen = () => {
 }
 
 ws.addEventListener('message', async function(event) {
-  const interval = 200
   const msgData = event.data
-  const timeStamp = Date.now()
-  const msgStr = JSON.parse(binaryToString.fromBuffer(msgData))
-  msgStr['timestamp'] = timeStamp
-  const avaxPrice = msgStr.data['baseinUsd']
-  // Adding a timestamp to the price data so it's easier to filter out duplicates. Dexalot sends the same data twice every 6 seconds.
-  const timeStampData = removeDigits(msgStr['timestamp'])
-  const priceDataObject = {avaxPrice, timeStampData}
-  if (avaxPrice !== undefined) {
-    priceDataArray.push(priceDataObject)
+  const msgQue: WebSocket.Data[] = []
+  msgQue.push(msgData)
+  setTimeout(async () => {
+    await processMsgQue(msgQue, ws, msgData)
   }
-  const uniquePriceDataArray = priceDataArray.filter((obj, index) => priceDataArray.findIndex((item) => item.timeStampData === obj.timeStampData) === index)
-  if (priceDataArray.length > interval) {
-    const avaxBalance = Number(await getAvaxBalance())
-    const usdcBalance = Number(await getUsdcBalance())
-    const last10Minutes = uniquePriceDataArray.map((priceData: any) => priceData.avaxPrice).slice(-100)
-    const last20Minutes = uniquePriceDataArray.map((priceData: any) => priceData.avaxPrice).slice(-200)
-    const sma10 = averageLastN(last10Minutes, 100)
-    const sma20 = averageLastN(last20Minutes, 200)
-
-    console.log('sma10: ', sma10)
-    console.log('sma20: ', sma20)
-
-    const boughtOrSold = await readLogFile()
-    console.log('boughtOrSold: ', boughtOrSold)
-    console.log(usdcBalance, 'usdc balance')
-    // Buy AVAX if the 10 minute moving average is greater than the 20 minute moving average and the AVAX balance is less than 1
-    if (sma10 > sma20 && avaxBalance < (1*(10**18))) {
-      const content = 'bought'
-        fs.writeFile('log.txt', content, (err: any) => {
-          if (err) {
-            console.error(err)
-            return
-          }})
-      console.log('buying...')
-      console.log('sma10: ', sma10)
-      console.log('sma20: ', sma20)
-      sendOrder((usdcBalance - (1*10**6)).toString(), 'buy')
-      
-    // Sell AVAX if the 10 minute moving average is less than the 20 minute moving average and the USDC balance is less than 1
-    } else if (sma10 < sma20 && usdcBalance <= (2*(10**6))) {
-        const content = 'sold'
-        fs.writeFile('log.txt', content, (err: any) => {
-          if (err) {
-            console.error(err)
-            return
-          }})
-        await sendOrder((avaxBalance - (.01*(10**18))).toString(), 'sell') 
-        console.log('sold')
-  }
-}
-}
 )
+})
 
 ws.onclose = () => {
   console.log('Connection closed')
