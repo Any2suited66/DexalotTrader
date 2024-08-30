@@ -13,10 +13,7 @@ const privateKey = process.env.PRIVATE_KEY?.replace(/\\n/g, '\n') || '';
 
 const provider = new ethers.JsonRpcProvider('https://api.avax.network/ext/bc/C/rpc');
 
-const userAddress = '0x5cB0B45144CaEb8c4122D0B5dB3F73eB8330D06D'
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
+const userAddress = process.env.USER_ADDRESS || ''
 
 async function getAvaxBalance() {
   const balance = await provider.getBalance(userAddress);
@@ -60,7 +57,6 @@ async function getFirmQuote(amount: string, side: string) {
   return responseData
 }
 
-
 async function sendOrder(amount: string, side: string) {
   const wallet = new ethers.Wallet(privateKey, provider);
   if (side === 'buy') {
@@ -85,14 +81,6 @@ function averageLastN(numbers: any, n: number) {
   const slicedArray = numbers.slice(-n);
   const sum = slicedArray.reduce((acc: any, current: any) => acc + current, 0);
   return sum / slicedArray.length;
-}
-
-function removeDigits(number: number) {
-  return Math.floor(number / 100)|0;
-}
-
-async function readLogFile() {
-  return await fs.readFileSync('log.txt', 'utf8')
 }
 
 async function processMsgQue(msgQue: any, ws: any, msgData: any) {
@@ -132,7 +120,6 @@ async function processMsgQue(msgQue: any, ws: any, msgData: any) {
           await sendOrder((avaxBalance - (.01*(10**18))).toString(), 'sell') 
           console.log('sold')
     }
-    sleep(30000)
   }
   }
   }
