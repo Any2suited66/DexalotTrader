@@ -156,5 +156,6 @@ ws.onclose = () => {
 }
 
 ws.onerror = (error) => {
+  console.log('Connection closed on error')
   console.log(error)
 }
