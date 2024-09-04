@@ -139,14 +139,18 @@ async function getTimestampAndPriceData(filename: string, data: any[] = []): Pro
       .on('end', function() {
         const timeStampData = data.map((priceData: any) => priceData.timeStamp)
         const priceData = data.map((priceData: any) => priceData.price)
-        return {timeStampData, priceData};
+        if (timeStampData.length > 0) {
+          return {timeStampData, priceData};
+        } else {
+          null
+        }
       });
       
   });
 }
 
 async function processMsgQue(msgData: any) {
-    const interval = 202
+    const interval = 50
     timeStamp = Date.now()
     const msgStr = await JSON.parse(binaryToString.fromBuffer(msgData))
   
@@ -162,8 +166,6 @@ async function processMsgQue(msgData: any) {
 
     let timeStampAndPriceDataArrays: string[] = await getTimestampAndPriceData('priceData.csv');
     var priceDataArray = timeStampAndPriceDataArrays[1]
-    var timeStampDataArray = timeStampAndPriceDataArrays[0]
-
     
     // Sometimes we get messages with no price data. We don't want to write these to the CSV. We also don't want to write duplicate data so I check if the last line in the CSV contains the current timestamp.
     const uniquePriceArray: string[] = []
@@ -175,10 +177,10 @@ async function processMsgQue(msgData: any) {
     if (uniquePriceArray.length > interval) {
       const avaxBalance = Number(await getAvaxBalance())
       const usdcBalance = Number(await getUsdcBalance())
-      const last10Minutes = priceDataArray.slice(-100)
-      const last20Minutes = priceDataArray.slice(-200)
-      const sma10 = averageLastN(last10Minutes, 100)
-      const sma20 = averageLastN(last20Minutes, 200)
+      const last10Minutes = uniquePriceArray.slice(-25)
+      const last20Minutes = uniquePriceArray.slice(-50)
+      const sma10 = averageLastN(last10Minutes, 25)
+      const sma20 = averageLastN(last20Minutes, 50)
 
       console.log('sma10: ', sma10)
       console.log('sma20: ', sma20)
@@ -251,16 +253,22 @@ const socketOpenListener = () => {
   console.log('Connected to the server')  
 };
 
+let messageCounter = 0
+
 const messageListener = async (event: { data: any; }) => {
-  const msgData = event.data
-  const msgQue: WebSocket.Data[] = []
-  msgQue.push(msgData)
-  await processMsgQue(msgData)
+  messageCounter++
+  if (messageCounter % 2 === 0) {
+    const msgData = event.data
+    const msgQue: WebSocket.Data[] = []
+    msgQue.push(msgData)
+    await processMsgQue(msgData)
+  }
 }
 
 const socketCloseListener = () => {
   // Reconnect attempt
   const ws = new WebSocket('wss://api.dexalot.com');
+  ws.close()
   ws.addEventListener('open', socketOpenListener);
   ws.addEventListener('message', messageListener);
   ws.addEventListener('close', socketCloseListener);
