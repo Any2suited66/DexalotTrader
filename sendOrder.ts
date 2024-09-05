@@ -3,12 +3,9 @@ import {config} from 'dotenv';
 import WebSocket from 'ws';
 import {Parser} from '@json2csv/plainjs';
 
-const csv = require('csv')
 const binaryToString = require('binary-string');
 const fs = require('fs');
-// const { createCsvWriter } = require('csv-writer');
-const path = require("path");
-const { parse } = require("csv-parse");
+const csv = require("@fast-csv/parse")
 
 
 
@@ -125,32 +122,26 @@ function averageLastN(numbers: any, n: number) {
   return sum / slicedArray.length;
 }
 
-async function getTimestampAndPriceData(filename: string, data: any[] = []): Promise<[]> {
-  return new Promise((reject) => {
-    fs.createReadStream(filename)
-      .pipe(parse({ delemiter: ',', columns: true, ltrim: true }))
-      .on('data', function(row: any) {
-        data.push(row);
-      })
-      .on('error', function(err: any) {
-        console.log(err);
-        reject(err);
-      })
-      .on('end', function() {
-        const timeStampData = data.map((priceData: any) => priceData.timeStamp)
-        const priceData = data.map((priceData: any) => priceData.price)
-        if (timeStampData.length > 0) {
-          return {timeStampData, priceData};
-        } else {
-          null
-        }
-      });
-      
-  });
-}
+function readCsv(path: any) {
+    return new Promise((resolve, reject) => {
+      const data: any[] = [];
+  
+      csv
+        .parseFile(path)
+        .on("error", reject)
+        .on("data", (row: any) => {
+          data.push(row);
+        })
+        .on("end", () => {
+          resolve(data);
+        });
+    });
+  }
+  
+
 
 async function processMsgQue(msgData: any) {
-    const interval = 50
+    const interval = 200
     timeStamp = Date.now()
     const msgStr = await JSON.parse(binaryToString.fromBuffer(msgData))
   
@@ -159,33 +150,26 @@ async function processMsgQue(msgData: any) {
 
     // Adding a timestamp to the price data so it's easier to filter out duplicates. Dexalot sends the same data twice every 6 seconds.
     const timeStampData = msgStr['timestamp']
-
     if (avaxPrice !== undefined) {
       await write("priceData.csv", avaxPrice, timeStampData)    
     }
 
-    let timeStampAndPriceDataArrays: string[] = await getTimestampAndPriceData('priceData.csv');
-    var priceDataArray = timeStampAndPriceDataArrays[1]
+
+    const timeStampAndPriceDataArrays: any = await readCsv('priceData.csv');
+    const priceDataArray = timeStampAndPriceDataArrays.map((data: any) => Number(data[1]))
     
     // Sometimes we get messages with no price data. We don't want to write these to the CSV. We also don't want to write duplicate data so I check if the last line in the CSV contains the current timestamp.
-    const uniquePriceArray: string[] = []
-    for (const item of priceDataArray) {
-      if (!uniquePriceArray.includes(item)) {
-        uniquePriceArray.push(item)
-      }
-    }
-    if (uniquePriceArray.length > interval) {
+    if (priceDataArray.length > interval) {
       const avaxBalance = Number(await getAvaxBalance())
       const usdcBalance = Number(await getUsdcBalance())
-      const last10Minutes = uniquePriceArray.slice(-25)
-      const last20Minutes = uniquePriceArray.slice(-50)
-      const sma10 = averageLastN(last10Minutes, 25)
-      const sma20 = averageLastN(last20Minutes, 50)
+      const last10Minutes = priceDataArray.slice(-100)
+      const last20Minutes = priceDataArray.slice(-200)
+      const sma10 = averageLastN(last10Minutes, 100)
+      const sma20 = averageLastN(last20Minutes, 200)
 
       console.log('sma10: ', sma10)
       console.log('sma20: ', sma20)
 
-      console.log(timeStamp, 'time stamp')
       // Buy AVAX if the 10 minute moving average is greater than the 20 minute moving average and the AVAX balance is less than 1
       if (sma10 > sma20 && avaxBalance < (1*(10**18))) {
         console.log('buying...')
